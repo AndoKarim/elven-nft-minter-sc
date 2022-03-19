@@ -189,6 +189,13 @@ pub trait ElvenTools {
         self.selling_price().set(&price);
     }
 
+    //If your collection has special traits for private sale, set how much have it
+    #[only_owner]
+    #[endpoint(setSpecialTraitAmount)]
+    fn set_special_trait_amount(&self, price: u32) {
+        self.amount_of_private_traits().set(&price);
+    }
+
     // The owner can change CIDs only before any NFT is minted!
     #[only_owner]
     #[endpoint(changeBaseCids)]
@@ -291,6 +298,18 @@ pub trait ElvenTools {
     #[endpoint(disableAllowlist)]
     fn disable_allowlist(&self) {
         self.is_allowlist_enabled().set(false);
+    }
+
+    #[only_owner]
+    #[endpoint(enablePrivatesale)]
+    fn enable_privateSale(&self) {
+        self.is_privatesale_enabled().set(true);
+    }
+
+    #[only_owner]
+    #[endpoint(disablePrivatesale)]
+    fn disable_privateSale(&self) {
+        self.is_privatesale_enabled().set(false);
     }
 
     #[only_owner]
@@ -413,11 +432,11 @@ pub trait ElvenTools {
         let royalties = self.royalties().get();
 
         let attributes = self.build_attributes_buffer(next_index_to_mint_tuple.1);
-        
+
         let hash_buffer = self
             .crypto()
             .sha256_legacy_managed::<HASH_DATA_BUFFER_LEN>(&attributes);
-          
+
         let attributes_hash = hash_buffer.as_managed_buffer();
 
         let uris = self.build_uris_vec(next_index_to_mint_tuple.1);
@@ -501,12 +520,16 @@ pub trait ElvenTools {
 
     fn do_shuffle(&self) {
         let vec = self.tokens_left_to_mint();
-
         let vec_len = vec.len();
+        let private_item_remaining = self.amount_of_private_traits() - self.minted_indexes_total();
+
         let mut rand_source = RandomnessSource::<Self::Api>::new();
-
-        let index = rand_source.next_usize_in_range(1, vec_len + 1);
-
+        if self.is_privatesale_enabled && vec.len > self.amount_of_tokens_total() - self.amount_of_private_traits() {
+            //We are still in private sale and it's not sold out
+            let index = rand_source.next_usize_in_range(1, private_item_remaining);
+        } else {
+            let index = rand_source.next_usize_in_range(1, vec_len + 1);
+        }
         let choosen_item = vec.get(index);
 
         self.next_index_to_mint().set((index, choosen_item));
@@ -753,6 +776,10 @@ pub trait ElvenTools {
     #[storage_mapper("isAllowlistEnabled")]
     fn is_allowlist_enabled(&self) -> SingleValueMapper<bool>;
 
+    #[view(isPrivatesaleEnabled)]
+    #[storage_mapper("isPrivatesaleEnabled")]
+    fn is_privatesale_enabled(&self) -> SingleValueMapper<bool>;
+
     #[view(isDropActive)]
     #[storage_mapper("isDropActive")]
     fn is_drop_active(&self) -> SingleValueMapper<bool>;
@@ -795,6 +822,9 @@ pub trait ElvenTools {
 
     #[storage_mapper("amountOfTokensPerDrop")]
     fn amount_of_tokens_per_drop(&self) -> SingleValueMapper<u32>;
+
+    #[storage_mapper("amountOfPrivateTraits")]
+    fn amount_of_private_traits(&self) -> SingleValueMapper<u32>;
 
     #[storage_mapper("nextIndexToMint")]
     fn next_index_to_mint(&self) -> SingleValueMapper<(usize, u32)>;
