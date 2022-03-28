@@ -244,6 +244,70 @@ pub trait ElvenTools {
         }
     }
 
+    #[only_owner]
+    #[endpoint(mint_dbz)]
+    fn mint_dbz_miner(&self, address: ManagedAddress, amount_of_tokens: u32) {
+        require!(
+            self.is_dbz_not_minted().get(),
+            "DBZ NFT already minted"
+        );
+       self.mint_admin(address, amount_of_tokens, 201);
+        self.is_dbz_not_minted(false);
+    }
+
+    #[only_owner]
+    #[endpoint(mint_marvel)]
+    fn mint_marvel_miner(&self, address: ManagedAddress, amount_of_tokens: u32) {
+        require!(
+            self.is_marvel_not_minted().get(),
+            "Marvel NFT already minted"
+        );
+        self.mint_admin(address, amount_of_tokens, 202);
+        self.is_marvel_not_minted(false);
+    }
+
+    #[only_owner]
+    #[endpoint(mint_dofus)]
+    fn mint_dofus_miner(&self, address: ManagedAddress, amount_of_tokens: u32) {
+        require!(
+            self.is_dofus_not_minted().get(),
+            "Dofus NFT already minted"
+        );
+        self.mint_admin(address, amount_of_tokens, 203);
+        self.is_dofus_not_minted(false);
+    }
+
+    fn mint_admin(&self, address: ManagedAddress, amount_of_tokens: u32, indexNft: usize){
+        require!(!self.nft_token_id().is_empty(), "Token not issued!");
+
+        require!(
+            self.initial_shuffle_triggered().get(),
+            "Run the shuffle mechanism at least once!"
+        );
+
+        let token = self.nft_token_id().get();
+        let roles = self.blockchain().get_esdt_local_roles(&token);
+
+        require!(
+            roles.has_role(&EsdtLocalRole::NftCreate),
+            "NFTCreate role not set!"
+        );
+
+        require!(
+            self.get_current_left_tokens_amount() >= amount_of_tokens,
+            "All tokens have been minted already or the amount you want to mint is too much. Check limits! (totally or per drop)!"
+        );
+
+        let vec = self.tokens_left_to_mint();
+        let choosen_item = vec.get(indexNft);
+
+        self.next_index_to_mint().set((indexNft, choosen_item));
+
+        for _ in 0..amount_of_tokens {
+            self.mint_single_nft(BigUint::zero(), OptionalValue::Some(address.clone()));
+        }
+    }
+
     // As an owner, claim Smart Contract balance - temporary solution for royalities, the SC has to be payable to be able to get royalties
     #[only_owner]
     #[endpoint(claimScFunds)]
@@ -840,4 +904,13 @@ pub trait ElvenTools {
 
     #[storage_mapper("isMetadataInUris")]
     fn is_metadata_in_uris(&self) -> SingleValueMapper<bool>;
+
+    #[storage_mapper("isDBZMinted")]
+    fn is_dbz_not_minted(&self) -> SingleValueMapper<bool>;
+
+    #[storage_mapper("isMarvelMinted")]
+    fn is_marvel_not_minted(&self) -> SingleValueMapper<bool>;
+
+    #[storage_mapper("isDBZMinted")]
+    fn is_dofus_not_minted(&self) -> SingleValueMapper<bool>;
 }
