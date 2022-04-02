@@ -65,6 +65,9 @@ pub trait ElvenTools {
 
         let paused = true;
         self.paused().set_if_empty(&paused);
+        self.is_dbz_not_minted().set(true);
+        self.is_marvel_not_minted().set(true);
+        self.is_dofus_not_minted().set(true);
     }
 
     // Issue main collection token/handler
@@ -245,39 +248,39 @@ pub trait ElvenTools {
     }
 
     #[only_owner]
-    #[endpoint(mint_dbz)]
-    fn mint_dbz_miner(&self, address: ManagedAddress, amount_of_tokens: u32) {
+    #[endpoint(mintdbz)]
+    fn mint_dbz_miner(&self, address: ManagedAddress) {
         require!(
             self.is_dbz_not_minted().get(),
             "DBZ NFT already minted"
         );
-       self.mint_admin(address, amount_of_tokens, 201);
-        self.is_dbz_not_minted(false);
+        self.mint_admin(address, 1, 201);
+        self.is_dbz_not_minted().set(false);
     }
 
     #[only_owner]
-    #[endpoint(mint_marvel)]
-    fn mint_marvel_miner(&self, address: ManagedAddress, amount_of_tokens: u32) {
+    #[endpoint(mintmarvel)]
+    fn mint_marvel_miner(&self, address: ManagedAddress) {
         require!(
             self.is_marvel_not_minted().get(),
             "Marvel NFT already minted"
         );
-        self.mint_admin(address, amount_of_tokens, 202);
-        self.is_marvel_not_minted(false);
+        self.mint_admin(address, 1, 202);
+        self.is_marvel_not_minted().set(false);
     }
 
     #[only_owner]
-    #[endpoint(mint_dofus)]
-    fn mint_dofus_miner(&self, address: ManagedAddress, amount_of_tokens: u32) {
+    #[endpoint(mintdofus)]
+    fn mint_dofus_miner(&self, address: ManagedAddress) {
         require!(
             self.is_dofus_not_minted().get(),
             "Dofus NFT already minted"
         );
-        self.mint_admin(address, amount_of_tokens, 203);
-        self.is_dofus_not_minted(false);
+        self.mint_admin(address, 1, 203);
+        self.is_dofus_not_minted().set(false);
     }
 
-    fn mint_admin(&self, address: ManagedAddress, amount_of_tokens: u32, indexNft: usize){
+    fn mint_admin(&self, address: ManagedAddress, amount_of_tokens: u32, index_nft: usize){
         require!(!self.nft_token_id().is_empty(), "Token not issued!");
 
         require!(
@@ -299,9 +302,9 @@ pub trait ElvenTools {
         );
 
         let vec = self.tokens_left_to_mint();
-        let choosen_item = vec.get(indexNft);
+        let choosen_item = vec.get(index_nft);
 
-        self.next_index_to_mint().set((indexNft, choosen_item));
+        self.next_index_to_mint().set((index_nft, choosen_item));
 
         for _ in 0..amount_of_tokens {
             self.mint_single_nft(BigUint::zero(), OptionalValue::Some(address.clone()));
@@ -366,13 +369,13 @@ pub trait ElvenTools {
 
     #[only_owner]
     #[endpoint(enablePrivatesale)]
-    fn enable_privateSale(&self) {
+    fn enable_private_sale(&self) {
         self.is_privatesale_enabled().set(true);
     }
 
     #[only_owner]
     #[endpoint(disablePrivatesale)]
-    fn disable_privateSale(&self) {
+    fn disable_private_sale(&self) {
         self.is_privatesale_enabled().set(false);
     }
 
@@ -585,15 +588,28 @@ pub trait ElvenTools {
     fn do_shuffle(&self) {
         let vec = self.tokens_left_to_mint();
         let vec_len = vec.len();
-        let private_item_remaining = self.amount_of_private_traits() - self.minted_indexes_total();
+        let vec_len_u32 = vec_len as u32;
+        let private_item_remaining = (self.amount_of_private_traits().get() - self.minted_indexes_total().get()) as usize;
 
         let mut rand_source = RandomnessSource::<Self::Api>::new();
-        if self.is_privatesale_enabled && vec.len > self.amount_of_tokens_total() - self.amount_of_private_traits() {
+        let amount_public_traits = self.amount_of_tokens_total().get() - self.amount_of_private_traits().get();
+    
+        let index = if self.is_privatesale_enabled().get() && vec_len_u32 > amount_public_traits{
             //We are still in private sale and it's not sold out
-            let index = rand_source.next_usize_in_range(1, private_item_remaining);
+            let val = rand_source.next_usize_in_range(1, private_item_remaining);
+            /*while !(self.tokens_minted().item_is_empty(index)) {
+                let index = rand_source.next_usize_in_range(1, private_item_remaining);
+            }*/
+            val
         } else {
-            let index = rand_source.next_usize_in_range(1, vec_len + 1);
-        }
+            //We are in public sale (either because of privateSale ended or because all private sale is sold)
+            let val = rand_source.next_usize_in_range(1, vec_len + 1);
+            /*while !self.tokens_minted().item_is_empty(val) {
+                let val = rand_source.next_usize_in_range(1, vec_len + 1);
+            }*/
+            val
+        };
+        self.tokens_minted().set(index, &index);
         let choosen_item = vec.get(index);
 
         self.next_index_to_mint().set((index, choosen_item));
@@ -646,7 +662,7 @@ pub trait ElvenTools {
 
         if total_tokens_left > 0 {
             let mut vec = self.tokens_left_to_mint();
-            vec.swap_remove(minted_index_tuple.0);
+            vec.clear_entry(minted_index_tuple.0);
             self.do_shuffle();
         }
     }
@@ -782,6 +798,11 @@ pub trait ElvenTools {
         left_tokens
     }
 
+    #[view(getTokensLeftToMintList)]
+    fn tokens_left_to_mint_list(&self) -> usize{
+        self.tokens_left_to_mint().len()
+    }
+
     #[view(getMintedPerAddressPerDrop)]
     fn get_minted_per_address_per_drop(&self, address: ManagedAddress) -> u32 {
         let minted_per_address_per_drop: u32;
@@ -896,6 +917,9 @@ pub trait ElvenTools {
     #[storage_mapper("tokensLeftToMint")]
     fn tokens_left_to_mint(&self) -> VecMapper<u32>;
 
+    #[storage_mapper("tokensMinted")]
+    fn tokens_minted(&self) -> VecMapper<usize>;
+
     #[storage_mapper("initialShuffleTriggered")]
     fn initial_shuffle_triggered(&self) -> SingleValueMapper<bool>;
 
@@ -911,6 +935,6 @@ pub trait ElvenTools {
     #[storage_mapper("isMarvelMinted")]
     fn is_marvel_not_minted(&self) -> SingleValueMapper<bool>;
 
-    #[storage_mapper("isDBZMinted")]
+    #[storage_mapper("isDofusMinted")]
     fn is_dofus_not_minted(&self) -> SingleValueMapper<bool>;
 }
